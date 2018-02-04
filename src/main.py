@@ -60,7 +60,7 @@ for i in range(0, run_for_s * run_freq):
 	# save values in dictionary
 	dict = {'X': x, 'Y': y, 'Z': z, 'It': i}
 	data = ujson.dumps(dict)
-	client.publish('The100', bytes(data, 'utf-8'))
+	client.publish('esys/The100/', bytes(data, 'utf-8'))
 
 	print("X: ", x)
 	print("Y: ", y)

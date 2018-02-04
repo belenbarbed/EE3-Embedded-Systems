@@ -1,15 +1,10 @@
-from machine import Pin, I2C
-import time 
+import machine
+import time
 import sys
 import os
-
-print(os.statvfs(""))
-
-# set up i2c comm
-i2cport = I2C(scl=Pin(5), sda=Pin(4), freq=100000)
-
-# enable accelerometer read at 100Hz (at reg 0x20)
-i2cport.writeto(24, bytearray([0x20, 0x57]))
+import ujson
+import network
+from umqtt.simple import MQTTClient
 
 # read x axis
 def getX():
@@ -32,44 +27,45 @@ def getZ():
 	z = (z_higher << 8) + z_lower
 	return z
 
-os.remove("data.txt")
-file = open("data.txt", "w")
-	
-for i in range(0, 2000):
 
-	#try:	
-	#	x = getX()
-	#except ValueError:
-	#	x = 0
+# ###################### CODE BEGINS HERE ##############################################
 
-	#try:	
-	#	y = getY()
-	#except ValueError:
-	#	y = 0
+# set up i2c comm
+i2cport = machine.I2C(scl=machine.Pin(5), sda=machine.Pin(4), freq=100000)
 
-	#try:	
-	#	z = getZ()
-	#except ValueError:
-	#	z = 0
+# enable accelerometer read at 100Hz (at reg 0x20)
+i2cport.writeto(24, bytearray([0x20, 0x57]))	
+
+# connect to WiFi
+ap_if = network.WLAN(network.AP_IF)
+ap_if.active(False)
+sta_if = network.WLAN(network.STA_IF)
+sta_if.active(True)
+sta_if.connect('EEERover', 'exhibition')
+time.sleep(5)
+print(sta_if.isconnected())
+
+# connect to MQTT broker
+client = MQTTClient(machine.unique_id(), "192.168.0.10")
+client.connect()
+
+run_for_s = 20
+run_freq = 100
+for i in range(0, run_for_s * run_freq):
 
 	x = getY()	
 	y = getY()
 	z = getZ()
+	
+	# save values in dictionary
+	dict = {'X': x, 'Y': y, 'Z': z, 'It': i}
+	data = ujson.dumps(dict)
+	client.publish('The100', bytes(data, 'utf-8'))
 
 	print("X: ", x)
 	print("Y: ", y)
 	print("Z: ", z)
 	print("Fucks up here", i)
 	
-	file.write(str(x))
-	file.write("\n")
-	file.write(str(y))
-	file.write("\n")
-	file.write(str(z))
-	file.write("\n")
-	#file.write("\n")
-	
-	# 10Hz
-	time.sleep(0.01)
-	
-file.close()
+	# 100Hz
+	time.sleep(1/run_freq)

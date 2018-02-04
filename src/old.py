@@ -1,5 +1,10 @@
 from machine import Pin, I2C
-from time import sleep
+import time 
+import sys
+import os
+
+print(os.statvfs(""))
+
 # set up i2c comm
 i2cport = I2C(scl=Pin(5), sda=Pin(4), freq=100000)
 
@@ -27,23 +32,44 @@ def getZ():
 	z = (z_higher << 8) + z_lower
 	return z
 
-fileX = open("dataX.txt", "w")
-fileY = open("dataY.txt", "w")
-fileZ = open("dataZ.txt", "w")
+os.remove("data.txt")
+file = open("data.txt", "w")
 	
-for i in range(0, 10):
+for i in range(0, 2000):
 
-	x = getX()
+	#try:	
+	#	x = getX()
+	#except ValueError:
+	#	x = 0
+
+	#try:	
+	#	y = getY()
+	#except ValueError:
+	#	y = 0
+
+	#try:	
+	#	z = getZ()
+	#except ValueError:
+	#	z = 0
+
+	x = getY()	
 	y = getY()
 	z = getZ()
 
 	print("X: ", x)
 	print("Y: ", y)
 	print("Z: ", z)
+	print("Fucks up here", i)
 	
-	fileX.write(x)
-	fileY.write(y)
-	fileZ.write(z)
+	file.write(str(x))
+	file.write("\n")
+	file.write(str(y))
+	file.write("\n")
+	file.write(str(z))
+	file.write("\n")
+	#file.write("\n")
 	
-	# 100Hz
-	time.sleep(.1)
+	# 10Hz
+	time.sleep(0.01)
+	
+file.close()

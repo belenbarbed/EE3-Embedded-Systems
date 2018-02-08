@@ -36,6 +36,7 @@ i2cport = machine.I2C(scl=machine.Pin(5), sda=machine.Pin(4), freq=100000)
 # enable accelerometer read at 100Hz (at reg 0x20)
 i2cport.writeto(24, bytearray([0x20, 0x57]))	
 
+'''
 # connect to WiFi
 ap_if = network.WLAN(network.AP_IF)
 ap_if.active(False)
@@ -48,6 +49,7 @@ print(sta_if.isconnected())
 # connect to MQTT broker
 client = MQTTClient(machine.unique_id(), "192.168.0.10")
 client.connect()
+'''
 
 run_for_s = 20
 run_freq = 100
@@ -58,14 +60,15 @@ for i in range(0, run_for_s * run_freq):
 	z = getZ()
 	
 	# save values in dictionary
-	dict = {'X': x, 'Y': y, 'Z': z, 'It': i}
-	data = ujson.dumps(dict)
-	client.publish('esys/The100/', bytes(data, 'utf-8'))
+	#dict = {'X': x, 'Y': y, 'Z': z, 'It': i}
+	#data = ujson.dumps(dict)
+	#client.publish('esys/The100/', bytes(data, 'utf-8'))
 
-	print("X: ", x)
-	print("Y: ", y)
-	print("Z: ", z)
-	print("Fucks up here", i)
+	#print("X: ", x)
+	#print("Y: ", y)
+	#print("Z: ", z)
+	#print("Fucks up here", i)
+	print(z)
 	
 	# 100Hz
 	time.sleep(1/run_freq)

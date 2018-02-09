@@ -1,8 +1,11 @@
 fileID = fopen('data.txt', 'r');
-
 all = fscanf(fileID, '%f');
+[peaks, idx] = findpeaks(all);
+
 figure(1)
+hold on
 plot(all)
+hold off
 title('Z acceleration')
 xlabel('time (100th of second)')
 

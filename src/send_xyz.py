@@ -52,10 +52,22 @@ client.connect()
 '''
 
 run_for_s = 20
-run_freq = 75
+run_freq = 100
 for i in range(0, run_for_s * run_freq):
 
+	x = getY()	
+	y = getY()
 	z = getZ()
+	
+	# save values in dictionary
+	#dict = {'X': x, 'Y': y, 'Z': z, 'It': i}
+	#data = ujson.dumps(dict)
+	#client.publish('esys/The100/', bytes(data, 'utf-8'))
+
+	#print("X: ", x)
+	#print("Y: ", y)
+	#print("Z: ", z)
+	#print("Fucks up here", i)
 	print(z)
 	
 	# 100Hz

@@ -1,4 +1,4 @@
-fileID = fopen('data.txt', 'r');
+fileID = fopen('../data/data_150.txt', 'r');
 all = fscanf(fileID, '%f');
 [peaks, idx] = findpeaks(all);
 

@@ -1,4 +1,6 @@
 import paho.mqtt.client as mqtt
+import ast
+from "sp_method_connected.py" import play_music
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -10,13 +12,19 @@ def on_connect(client, userdata, flags, rc):
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
+    #print(msg.topic+" "+str(msg.payload))
+    #print(str(msg.payload))
+    d = ast.literal_eval(msg.payload)
+    bpm = float(d['bpm'])
+    print(bpm)
+    play_music(bpm)
 
 client = mqtt.Client("TrackIt")
 client.on_connect = on_connect
 client.on_message = on_message
 
-client.connect("192.168.0.10", 1883, 60)
+#client.connect("192.168.0.10", 1883, 60)
+client.connect("iot.eclipse.org", 1883, 60)
 
 # Blocking call that processes network traffic, dispatches callbacks and
 # handles reconnecting.

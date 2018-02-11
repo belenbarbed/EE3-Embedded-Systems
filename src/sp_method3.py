@@ -6,7 +6,7 @@ import spotipy.util as util
 import urllib
 
 scope = 'user-library-read'
-
+#Note username = 21s5p2g6odn7smk6ytcfz5m3q
 if len(sys.argv) > 1:
     username = sys.argv[1]
 else:

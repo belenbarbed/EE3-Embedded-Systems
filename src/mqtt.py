@@ -1,6 +1,6 @@
 import paho.mqtt.client as mqtt
 import ast
-from "sp_method_connected.py" import play_music
+import sp_method_connected
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -17,7 +17,7 @@ def on_message(client, userdata, msg):
     d = ast.literal_eval(msg.payload)
     bpm = float(d['bpm'])
     print(bpm)
-    play_music(bpm)
+    sp_method_connected.play_music(bpm)
 
 client = mqtt.Client("TrackIt")
 client.on_connect = on_connect

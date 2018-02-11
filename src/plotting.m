@@ -1,4 +1,4 @@
-fileID = fopen('../data/data_150.txt', 'r');
+fileID = fopen('../data/data_wrist_180_x.txt', 'r');
 all = fscanf(fileID, '%f');
 [peaks, idx] = findpeaks(all);
 
@@ -6,8 +6,8 @@ figure(1)
 hold on
 plot(all)
 hold off
-title('Z acceleration')
-xlabel('time (100th of second)')
+title('X acceleration')
+xlabel('time (400th of second)')
 
 % size = length(all)/3;
 % x = zeros(size);

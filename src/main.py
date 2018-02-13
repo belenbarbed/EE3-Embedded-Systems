@@ -44,7 +44,7 @@ run_for_s = bpm_freq * 200
 #          True  = falling edge has been last detected
 isBelow = False
 
-for i in range(0, run_for_s/bpm_freq):
+while True:
 
 	peak_ps = 0
 	until = 0

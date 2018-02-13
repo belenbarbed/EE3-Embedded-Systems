@@ -1,5 +1,6 @@
 .DS_Store
 *.asv
+/src/.cache-21s5p2g6odn7smk6ytcfz5m3q
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

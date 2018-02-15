@@ -14,8 +14,11 @@ To calculate the bpm:
 
 
 
-To intergrate with Spotify API
+To intergrate with Spotify API:
 
+We used the spotify API - Spotipy to look through a runner's favorite running playlist that includes songs of all and any tempos. It traverses through you favorite songs and extracts the track's audio features such as tempo, artist and more.
+
+Once the program receives the input_bpm from the user it compares that to the extracted tempos from the tracks and plays the appropriate music in the right range within a +/-5bpm. This takes into account that humans wouldn't naturally run a an exactly for example 150bpm but 148bpm or so.
 
 
 

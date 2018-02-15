@@ -1,5 +1,27 @@
 # EE3-Embedded-Systems
+Product Name : TrackIt.
 
+It's scientifically proven that listening to music while running pushes the runner to cover longer distance (endurance) and faster i.e a great motivator enhacing one's workout.
+
+To solve for this, TrackIt. acts as your running buddy but detecting your tempo and playing music with a +/-5bpm range to match your pace.
+
+
+How it works:
+
+To calculate the bpm:
+
+
+
+
+
+To intergrate with Spotify API
+
+
+
+
+Future Developments:
+
+It would be able to intergrate with other API
 ## Sensor Analysis
 
 1. What does it do?

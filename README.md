@@ -14,7 +14,7 @@ It's scientifically proven that listening to music while running pushes the runn
 To solve for this, TrackIt. acts as your running buddy by detecting your tempo and playing music with a +/-5bpm range to match your pace.
 
 ## How it works:
-### To calculate the bpm:
+### To calculate the bpm:Refer to main.py
 As a runner moves they create a rhythmic pulse which can be detected by accelerometer sensors. Examples of this motion are shown in the 
 graphs folder of this repo. In order to detect accurately the BPM at which a runner moves we attached the accelerometer to their wrist
 and plotted the values of the x-axis acceleration. This was then approximated as a square wave, upon which we used an algorithm to 
@@ -22,9 +22,10 @@ determine its periodicity. We implemented a finite state machine which, in state
 Once the BPM value has been calculated this is passed to the broker. 
 
 ### Connecting to the broker:
+Initially, the spec suggested we utilize the MQTT Broker "EERover" however since this network is not connected to the internet i.e not a WPA2 network it proved a challenge as our Spotify API requires internet to function. Therefore, we utlized the "iot.eclipse.org" Broker instead and a personal hotspot to connect to the ESP.
 
 
-### To integrate with Spotify API:
+### To integrate with Spotify API: Refer to sp_method_connected.py 
 We used the spotify API - Spotipy to look through a runner's favorite running playlist that includes songs of all and any tempos. It traverses through your favorite songs and extracts the track's audio features such as tempo, artist and more.
 Once the program receives the input_bpm from the user it compares that to the extracted tempos from the tracks and plays the appropriate music in the right range within a +/-5bpm. This takes into account that humans wouldn't naturally run at exactly for example 150bpm but 148bpm or so.
 

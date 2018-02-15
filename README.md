@@ -21,7 +21,7 @@ and plotted the values of the x-axis acceleration. This was then approximated as
 determine its periodicity. We implemented a finite state machine which, in state 1, the code waits for a rising edge pulse to go above a specified upper threshold. In state 2, having detected a rising edge, the code waits for the x acceleration value to drop below a specified lower threshold. In this way we have implemented a Schmitt trigger to detect periodicity. We have also implemented a mechanism to ignore noisy pulses, by setting the minimum possible value during which a pulse will be ignored after a pulse is detected. This prevents two close, noisy, consecutive pulses changing the BPM. This is done in findpeak.py.
 Once the BPM value has been calculated this is passed to the broker. 
 
-## Connecting to the broker:
+### Connecting to the broker:
 
 
 ### To integrate with Spotify API:

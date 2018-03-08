@@ -155,7 +155,8 @@ int main() {
         *nonce = i;
         sha.computeHash(hash, sequence, 64);
         if ((hash[0] || hash[1]) == 0) {
-            pc.printf("found, %ul \n", *nonce);
+            pc.printf("found, %ul", *nonce);
+			pc.printf("\r\n");
         }
         i++;
     }

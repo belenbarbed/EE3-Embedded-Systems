@@ -42,9 +42,9 @@ enum messageType
 const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
 
 // Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
-const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};  
-//const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; //Alternative if phase order of input or drive is reversed
-
+const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
+//Alternative if phase order of input or drive is reversed:
+//const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; 
 // Phase lead to make motor spin
 const int8_t lead = 2;  //2 for forwards, -2 for backwards
 
@@ -90,8 +90,8 @@ RawSerial pc(SERIAL_TX, SERIAL_RX);
 Mail<message_t,16> outMessages;
 //function prototype - take messages from the queue and print them on the serial port
 void commOutFn();
-// Set a given drive state
 
+// Set a given drive state
 void motorOut(int8_t driveState){
     
     // Lookup the output byte from the drive state.
@@ -129,7 +129,7 @@ int8_t motorHome() {
     return readRotorState();
 }
 
-//SerialISR - retrieces a byte from the serial port(pc) and places on the queue 
+//SerialISR - retrieves a byte from the serial port(pc) and places it on the queue 
 void serialISR(){
     uint8_t newChar = pc.getc();
     inCharQ.put((void*)newChar);
@@ -164,7 +164,7 @@ void commOutFn(){
     while(1) {
         osEvent newEvent = outMessages.get();
         message_t *pMessage = (message_t*)newEvent.value.p;
-        pc.printf("Message %d with data 0x%016x\n",
+        pc.printf("Message %d with data 0x%016x\r\n",
         pMessage->code,pMessage->data); outMessages.free(pMessage);
     }    
 }
@@ -175,25 +175,42 @@ void decodeFn(){
     //attaching serialISR to the serial port(pc)
     pc.attach(&serialISR);
     while(1) {
-    osEvent newEvent = inCharQ.get();
-    uint8_t newChar = (uint8_t)newEvent.value.p; 
-    
-    //testing that we do not write past the end of the buffer is the incoming string is too long
-    if(array_pos < sizeof(char_array) ){
-        char_array[array_pos] = newChar; 
-        array_pos++;
+        osEvent newEvent = inCharQ.get();
+        uint8_t newChar = (uint8_t)newEvent.value.p; 
         
-        if(newChar == '\r'){
-            char_array[array_pos] = '\0';
-            array_pos = 0;
-            } //TEST HERE!
+        //testing that we do not write past the end of the buffer
+		//if the incoming string is too long
+        if(array_pos < sizeof(char_array) ){
+            char_array[array_pos] = newChar; 
+            array_pos++;
             
- //************PARSE HERE*****************       
-        }  
-    }    
+            if(newChar == '\r'){
+                // end of command reached, time to decode
+                char_array[array_pos] = '\0';
+                array_pos = 0;
+                
+                // TODO: Parsing 
+                // check first character
+                switch(char_array[0]) {
+                    case 'R': 
+                        // do rotation
+                        break;
+                    case 'V': 
+                        // do max speed
+                        break;
+                    case 'K':
+                        // set bitcoin key
+                        break;
+                    default:
+                        // do nothing?
+                        break;
+                }
+            }
+        }
+    }
 }
 
-void bitcoinStuff(){
+void bitcoinStuff() {
     
     // Bitcoin stuff
     SHA256 sha;
@@ -214,14 +231,13 @@ void bitcoinStuff(){
         *nonce = i;
         sha.computeHash(hash, sequence, 64);
         if ((hash[0] || hash[1]) == 0) {
-            pc.printf("nonce found: %ul\n\r", *nonce);
-            //
+            // TODO: subtitute printf for message call
+            putMessage(bitcoinNonce, 0);
+            //pc.printf("nonce found: %ul\n\r", *nonce);
         }
         i++;
     }  
 }
-
-
    
 //Main
 int main() {
@@ -229,6 +245,7 @@ int main() {
     //Starting the thread
     CommOutT.start(commOutFn);
     
+    // TODO: subtitute printf for message call
     pc.printf("Hello\n\r");
     
     //Run the motor synchronisation
@@ -246,5 +263,5 @@ int main() {
     
     bitcoinStuff();
 
-    //Need to test (instruction 6)
+    // TODO: Need to test (instruction 6)
 }

@@ -42,9 +42,9 @@ enum messageType
 const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
 
 // Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
-const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
-//Alternative if phase order of input or drive is reversed:
-//const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; 
+const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};  
+//const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; //Alternative if phase order of input or drive is reversed
+
 // Phase lead to make motor spin
 const int8_t lead = 2;  //2 for forwards, -2 for backwards
 
@@ -90,6 +90,10 @@ RawSerial pc(SERIAL_TX, SERIAL_RX);
 Mail<message_t,16> outMessages;
 //function prototype - take messages from the queue and print them on the serial port
 void commOutFn();
+
+// bitcoin key setting w/ command
+volatile uint64_t newKey;
+Mutex newKey_mutex;
 
 // Set a given drive state
 void motorOut(int8_t driveState){
@@ -178,8 +182,7 @@ void decodeFn(){
         osEvent newEvent = inCharQ.get();
         uint8_t newChar = (uint8_t)newEvent.value.p; 
         
-        //testing that we do not write past the end of the buffer
-		//if the incoming string is too long
+        //testing that we do not write past the end of the buffer if the incoming string is too long
         if(array_pos < sizeof(char_array) ){
             char_array[array_pos] = newChar; 
             array_pos++;
@@ -200,6 +203,9 @@ void decodeFn(){
                         break;
                     case 'K':
                         // set bitcoin key
+                        newKey_mutex.lock();
+                        sscanf(newCmd, "K%x", &newKey);
+                        newKey_mutex.unlock();
                         break;
                     default:
                         // do nothing?
@@ -228,6 +234,11 @@ void bitcoinStuff() {
     
     uint64_t i = *nonce;
     while (1) {
+        
+        newKey_mutex.lock();
+        *key = newKey;
+        newKey_mutex.unlock();
+        
         *nonce = i;
         sha.computeHash(hash, sequence, 64);
         if ((hash[0] || hash[1]) == 0) {
@@ -238,7 +249,7 @@ void bitcoinStuff() {
         i++;
     }  
 }
-   
+
 //Main
 int main() {
     
@@ -262,6 +273,8 @@ int main() {
     I3.fall(&motorISR);
     
     bitcoinStuff();
+    
+    // TODO: add statement to start the new command decoder thread
 
     // TODO: Need to test (instruction 6)
 }

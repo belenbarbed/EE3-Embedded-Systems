@@ -1,6 +1,6 @@
 #include "mbed.h"
 #include "SHA256.h"
-//include "rtos.h"
+#include "rtos.h"
 
 // Photointerrupter input pins
 #define I1pin D2
@@ -32,6 +32,12 @@ State   L1  L2  L3
 7       -   -   -
 */
 
+//a unique code for each message type
+enum messageType
+{
+    bitcoinNonce = 0
+};
+
 // Drive state to output table
 const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
 
@@ -44,6 +50,12 @@ const int8_t lead = 2;  //2 for forwards, -2 for backwards
 
 // Rotor offset at motor state 0
 int8_t orState = 0;
+
+//Mail template
+typedef struct{ 
+    uint8_t code;
+    uint32_t data; 
+} message_t ;
 
 // Status LED
 DigitalOut led1(LED1);
@@ -64,12 +76,27 @@ DigitalOut L2H(L2Hpin);
 DigitalOut L3L(L3Lpin);
 DigitalOut L3H(L3Hpin);
 
+//declare char_array for decode function
+char char_array[100] = {0}; 
+
+//Threads
+Thread CommOutT;
+Thread Decode;
+Queue<void, 8> inCharQ;
+
+//Initialise the serial port
+RawSerial pc(SERIAL_TX, SERIAL_RX);
+//Initialise the mail outmessage
+Mail<message_t,16> outMessages;
+//function prototype - take messages from the queue and print them on the serial port
+void commOutFn();
 // Set a given drive state
+
 void motorOut(int8_t driveState){
     
     // Lookup the output byte from the drive state.
     int8_t driveOut = driveTable[driveState & 0x07];
-      
+    
     // Turn off first
     if (~driveOut & 0x01) L1L = 0;
     if (~driveOut & 0x02) L1H = 1;
@@ -102,6 +129,22 @@ int8_t motorHome() {
     return readRotorState();
 }
 
+//SerialISR - retrieces a byte from the serial port(pc) and places on the queue 
+void serialISR(){
+    uint8_t newChar = pc.getc();
+    inCharQ.put((void*)newChar);
+}
+
+//putMessage - separate function that adds messages to the queue
+void putMessage(uint8_t code, uint32_t data){
+     //*pMessage is a pointer which points to the memory location the message will be stored
+     message_t *pMessage = outMessages.alloc(); 
+     pMessage->code = code;
+     pMessage->data = data; 
+     //put() places the message pointer in the queue
+     outMessages.put(pMessage);
+}
+
 // Interrupt routine to drive motor forwards by 1 step
 void motorISR () {    
     int8_t intState = 0;
@@ -113,26 +156,44 @@ void motorISR () {
         motorOut((intState-orState+lead+6)%6); //+6 to make sure the remainder is positive
     }
 }
+
+
+//commOutFn - take messages from the queue and print them on the serial port
+void commOutFn(){
     
-// Main
-int main() {
+    while(1) {
+        osEvent newEvent = outMessages.get();
+        message_t *pMessage = (message_t*)newEvent.value.p;
+        pc.printf("Message %d with data 0x%016x\n",
+        pMessage->code,pMessage->data); outMessages.free(pMessage);
+    }    
+}
+   
+//thread to decode commands   
+void decodeFn(){  
+    int array_pos = 0;
+    //attaching serialISR to the serial port(pc)
+    pc.attach(&serialISR);
+    while(1) {
+    osEvent newEvent = inCharQ.get();
+    uint8_t newChar = (uint8_t)newEvent.value.p; 
     
-    //Initialise the serial port
-    Serial pc(SERIAL_TX, SERIAL_RX);
-    pc.printf("Hello\n\r");
-    
-    //Run the motor synchronisation
-    orState = motorHome();
-    pc.printf("Rotor origin: %x\n\r",orState);
-    //orState is subtracted from future rotor state inputs to align rotor and motor states
-    
-    //Poll the rotor state and set the motor outputs accordingly to spin the motor
-    I1.rise(&motorISR);
-    I1.fall(&motorISR);
-    I2.rise(&motorISR);
-    I2.fall(&motorISR);
-    I3.rise(&motorISR);
-    I3.fall(&motorISR);
+    //testing that we do not write past the end of the buffer is the incoming string is too long
+    if(array_pos < sizeof(char_array) ){
+        char_array[array_pos] = newChar; 
+        array_pos++;
+        
+        if(newChar == '\r'){
+            char_array[array_pos] = '\0';
+            array_pos = 0;
+            } //TEST HERE!
+            
+ //************PARSE HERE*****************       
+        }  
+    }    
+}
+
+void bitcoinStuff(){
     
     // Bitcoin stuff
     SHA256 sha;
@@ -154,7 +215,36 @@ int main() {
         sha.computeHash(hash, sequence, 64);
         if ((hash[0] || hash[1]) == 0) {
             pc.printf("nonce found: %ul\n\r", *nonce);
+            //
         }
         i++;
-    }
+    }  
+}
+
+
+   
+//Main
+int main() {
+    
+    //Starting the thread
+    CommOutT.start(commOutFn);
+    
+    pc.printf("Hello\n\r");
+    
+    //Run the motor synchronisation
+    orState = motorHome();
+    pc.printf("Rotor origin: %x\n\r",orState);
+    //orState is subtracted from future rotor state inputs to align rotor and motor states
+    
+    //Poll the rotor state and set the motor outputs accordingly to spin the motor
+    I1.rise(&motorISR);
+    I1.fall(&motorISR);
+    I2.rise(&motorISR);
+    I2.fall(&motorISR);
+    I3.rise(&motorISR);
+    I3.fall(&motorISR);
+    
+    bitcoinStuff();
+
+    //Need to test (instruction 6)
 }

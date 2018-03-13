@@ -35,7 +35,9 @@ State   L1  L2  L3
 //a unique code for each message type
 enum messageType
 {
-    bitcoinNonce = 0
+    bitcoinNonce_higher = 0,
+    bitcoinNonce_lower = 1,
+    start = 2
 };
 
 // Drive state to output table
@@ -182,14 +184,15 @@ void decodeFn(){
         osEvent newEvent = inCharQ.get();
         uint8_t newChar = (uint8_t)newEvent.value.p; 
         
-        //testing that we do not write past the end of the buffer if the incoming string is too long
+        // testing that we do not write past the end of the buffer
+        // if the incoming string is too long
         if(array_pos < sizeof(char_array) ){
             char_array[array_pos] = newChar; 
             array_pos++;
             
             if(newChar == '\r'){
                 // end of command reached, time to decode
-                char_array[array_pos] = '\0';
+                char_array[array_pos] = '\0';                
                 array_pos = 0;
                 
                 // TODO: Parsing 
@@ -204,7 +207,8 @@ void decodeFn(){
                     case 'K':
                         // set bitcoin key
                         newKey_mutex.lock();
-                        sscanf(newCmd, "K%x", &newKey);
+                        //sscanf(newCmd, "K%x", &newKey);
+                        sscanf(char_array, "K%x", &newKey);
                         newKey_mutex.unlock();
                         break;
                     default:
@@ -242,8 +246,11 @@ void bitcoinStuff() {
         *nonce = i;
         sha.computeHash(hash, sequence, 64);
         if ((hash[0] || hash[1]) == 0) {
-            // TODO: subtitute printf for message call
-            putMessage(bitcoinNonce, 0);
+            // Send message reporting good nonce
+            uint32_t nonce_lower  = (uint32_t) *nonce;
+            uint32_t nonce_higher = (uint32_t) ((*nonce) >> 32);
+            putMessage(bitcoinNonce_lower, nonce_lower);
+            putMessage(bitcoinNonce_higher, nonce_higher);
             //pc.printf("nonce found: %ul\n\r", *nonce);
         }
         i++;
@@ -253,13 +260,14 @@ void bitcoinStuff() {
 //Main
 int main() {
     
-    //Starting the thread
+    // Starting the threads
     CommOutT.start(commOutFn);
+    Decode.start(decodeFn);
     
-    // TODO: subtitute printf for message call
-    pc.printf("Hello\n\r");
+    // indicate start of main code
+    putMessage(start, 0);
     
-    //Run the motor synchronisation
+    // Run the motor synchronisation
     orState = motorHome();
     pc.printf("Rotor origin: %x\n\r",orState);
     //orState is subtracted from future rotor state inputs to align rotor and motor states
@@ -273,8 +281,6 @@ int main() {
     I3.fall(&motorISR);
     
     bitcoinStuff();
-    
-    // TODO: add statement to start the new command decoder thread
 
     // TODO: Need to test (instruction 6)
 }

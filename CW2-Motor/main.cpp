@@ -2,6 +2,29 @@
 #include "SHA256.h"
 #include "rtos.h"
 
+//-------------------------------------------------------- FUNCTION DECLARATIONS
+
+// Motor control
+void motorOut(int8_t driveState, uint32_t torque);
+inline int8_t readRotorState();
+int8_t motorHome();
+void motorISR();
+void motorCtrlFn();
+void motorCtrlTick();
+
+// Messaging
+void putMessage(uint8_t code, uint32_t data);
+void commOutFn();
+
+// Commands
+void serialISR();
+void decodeFn();
+
+// Bitcoin mining
+void bitcoinStuff();
+
+//----------------------------------------------- GLOBAL VARIABLE INITIALISATION
+
 // Photointerrupter input pins
 #define I1pin D2
 #define I2pin D11
@@ -37,15 +60,18 @@ enum messageType
 {
     bitcoinNonce_higher = 0,
     bitcoinNonce_lower = 1,
-    start = 2
+    start = 2,
+    motor_speed = 3
 };
 
 // Drive state to output table
 const int8_t driveTable[] = {0x12,0x18,0x09,0x21,0x24,0x06,0x00,0x00};
 
-// Mapping from interrupter inputs to sequential rotor states. 0x00 and 0x07 are not valid
-const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};  
-//const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; //Alternative if phase order of input or drive is reversed
+// Mapping from interrupter inputs to sequential rotor states.
+// 0x00 and 0x07 are not valid
+const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
+//Alternative if phase order of input or drive is reversed:
+//const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; 
 
 // Phase lead to make motor spin
 const int8_t lead = 2;  //2 for forwards, -2 for backwards
@@ -63,19 +89,16 @@ typedef struct{
 DigitalOut led1(LED1);
 
 // Photointerrupter inputs
-//DigitalIn I1(I1pin);
-//DigitalIn I2(I2pin);
-//DigitalIn I3(I3pin);
 InterruptIn I1(I1pin);
 InterruptIn I2(I2pin);
 InterruptIn I3(I3pin);
 
 // Motor Drive outputs
-DigitalOut L1L(L1Lpin);
+PwmOut L1L(L1Lpin);
+PwmOut L2L(L2Lpin);
+PwmOut L3L(L3Lpin);
 DigitalOut L1H(L1Hpin);
-DigitalOut L2L(L2Lpin);
 DigitalOut L2H(L2Hpin);
-DigitalOut L3L(L3Lpin);
 DigitalOut L3H(L3Hpin);
 
 //declare char_array for decode function
@@ -84,39 +107,48 @@ char char_array[100] = {0};
 //Threads
 Thread CommOutT;
 Thread Decode;
+Thread MotorCtrlT(osPriorityNormal, 1024);
+
 Queue<void, 8> inCharQ;
 
 //Initialise the serial port
 RawSerial pc(SERIAL_TX, SERIAL_RX);
 //Initialise the mail outmessage
 Mail<message_t,16> outMessages;
-//function prototype - take messages from the queue and print them on the serial port
+//function prototype - take messages from the queue
+//and print them on the serial port
 void commOutFn();
 
 // bitcoin key setting w/ command
 volatile uint64_t newKey;
 Mutex newKey_mutex;
 
+// motor control
+volatile uint32_t torque_tmp = 500;
+int32_t motorPosition;
+
+//---------------------------------------------------------------- MOTOR CONTROL
+
 // Set a given drive state
-void motorOut(int8_t driveState){
+void motorOut(int8_t driveState, uint32_t torque){
     
     // Lookup the output byte from the drive state.
     int8_t driveOut = driveTable[driveState & 0x07];
     
     // Turn off first
-    if (~driveOut & 0x01) L1L = 0;
+    if (~driveOut & 0x01) L1L.pulsewidth_us(0);
     if (~driveOut & 0x02) L1H = 1;
-    if (~driveOut & 0x04) L2L = 0;
+    if (~driveOut & 0x04) L2L.pulsewidth_us(0);
     if (~driveOut & 0x08) L2H = 1;
-    if (~driveOut & 0x10) L3L = 0;
+    if (~driveOut & 0x10) L3L.pulsewidth_us(0);
     if (~driveOut & 0x20) L3H = 1;
     
     // Then turn on
-    if (driveOut & 0x01) L1L = 1;
+    if (driveOut & 0x01) L1L.pulsewidth_us(torque);
     if (driveOut & 0x02) L1H = 0;
-    if (driveOut & 0x04) L2L = 1;
+    if (driveOut & 0x04) L2L.pulsewidth_us(torque);
     if (driveOut & 0x08) L2H = 0;
-    if (driveOut & 0x10) L3L = 1;
+    if (driveOut & 0x10) L3L.pulsewidth_us(torque);
     if (driveOut & 0x20) L3H = 0;
 }
     
@@ -128,41 +160,72 @@ inline int8_t readRotorState(){
 // Basic synchronisation routine    
 int8_t motorHome() {
     //Put the motor in drive state 0 and wait for it to stabilise
-    motorOut(0);
+    // TODO: ask if max means 2000us or 50% duty cycle (1000us)
+    motorOut(0, 1000);
     wait(1.0);
     
     //Get the rotor state
     return readRotorState();
 }
 
-//SerialISR - retrieves a byte from the serial port(pc) and places it on the queue 
-void serialISR(){
-    uint8_t newChar = pc.getc();
-    inCharQ.put((void*)newChar);
+// Interrupt routine to drive motor forwards by 1 step
+void motorISR () {
+    
+    static int8_t oldRotorState;
+    int8_t rotorState = readRotorState();
+    motorOut((rotorState-orState+lead+6)%6, torque_tmp);
+    
+    if (rotorState - oldRotorState == 5) {
+        motorPosition--;
+    } else if (rotorState - oldRotorState == -5) {
+        motorPosition++;
+    } else {
+        motorPosition += (rotorState - oldRotorState);
+    }
+    oldRotorState = rotorState;
 }
+
+// motor controlled thread fn
+void motorCtrlFn() {
+    
+    Ticker motorCtrlTicker;
+    // execute every 100ms
+    motorCtrlTicker.attach_us(&motorCtrlTick,100000);
+    
+    int32_t motorPos_old;
+    int32_t velocity;
+    int i = 0;
+    
+    while(1) {
+        i++;
+        motorPos_old = motorPosition;
+        MotorCtrlT.signal_wait(0x1);
+        // TODO: add timer to count time (not=10)
+        velocity = (motorPosition - motorPos_old)*10;
+        
+        if (i%10 == 0) {
+            putMessage(motor_speed, velocity);
+        }
+    }
+}
+
+// timer for motor control
+void motorCtrlTick(){
+    MotorCtrlT.signal_set(0x1);
+}
+
+//-------------------------------------------------------------------- MESSAGING
 
 //putMessage - separate function that adds messages to the queue
 void putMessage(uint8_t code, uint32_t data){
-     //*pMessage is a pointer which points to the memory location the message will be stored
+     //*pMessage is a pointer which points to the memory location
+     //where the message will be stored
      message_t *pMessage = outMessages.alloc(); 
      pMessage->code = code;
      pMessage->data = data; 
      //put() places the message pointer in the queue
      outMessages.put(pMessage);
 }
-
-// Interrupt routine to drive motor forwards by 1 step
-void motorISR () {    
-    int8_t intState = 0;
-    int8_t intStateOld = 0;
-    
-    intState = readRotorState();
-    if (intState != intStateOld) {
-        intStateOld = intState;
-        motorOut((intState-orState+lead+6)%6); //+6 to make sure the remainder is positive
-    }
-}
-
 
 //commOutFn - take messages from the queue and print them on the serial port
 void commOutFn(){
@@ -174,7 +237,16 @@ void commOutFn(){
         pMessage->code,pMessage->data); outMessages.free(pMessage);
     }    
 }
-   
+
+//--------------------------------------------------------------------- COMMANDS
+
+//SerialISR - retrieves a byte from the serial port(pc)
+//and places it on the queue 
+void serialISR(){
+    uint8_t newChar = pc.getc();
+    inCharQ.put((void*)newChar);
+}
+
 //thread to decode commands   
 void decodeFn(){  
     int array_pos = 0;
@@ -220,6 +292,8 @@ void decodeFn(){
     }
 }
 
+//--------------------------------------------------------------- BITCOIN MINING
+
 void bitcoinStuff() {
     
     // Bitcoin stuff
@@ -257,12 +331,19 @@ void bitcoinStuff() {
     }  
 }
 
-//Main
+//------------------------------------------------------------------------- MAIN
+
 int main() {
     
     // Starting the threads
     CommOutT.start(commOutFn);
     Decode.start(decodeFn);
+    MotorCtrlT.start(motorCtrlFn);
+    
+    // set PWM control
+    L1L.period_us(2000);
+    L2L.period_us(2000);
+    L3L.period_us(2000);
     
     // indicate start of main code
     putMessage(start, 0);
@@ -270,9 +351,11 @@ int main() {
     // Run the motor synchronisation
     orState = motorHome();
     pc.printf("Rotor origin: %x\n\r",orState);
-    //orState is subtracted from future rotor state inputs to align rotor and motor states
+    //orState is subtracted from future rotor state inputs
+    //to align rotor and motor states
     
-    //Poll the rotor state and set the motor outputs accordingly to spin the motor
+    //Poll the rotor state and set the motor outputs accordingly
+    //to spin the motor
     I1.rise(&motorISR);
     I1.fall(&motorISR);
     I2.rise(&motorISR);

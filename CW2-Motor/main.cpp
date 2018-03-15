@@ -102,7 +102,7 @@ DigitalOut L2H(L2Hpin);
 DigitalOut L3H(L3Hpin);
 
 //declare char_array for decode function
-char char_array[100] = {0}; 
+char char_array[50] = {0}; 
 
 //Threads
 Thread CommOutT;
@@ -114,13 +114,13 @@ Queue<void, 8> inCharQ;
 //Initialise the serial port
 RawSerial pc(SERIAL_TX, SERIAL_RX);
 //Initialise the mail outmessage
-Mail<message_t,16> outMessages;
+Mail<message_t,8> outMessages;
 //function prototype - take messages from the queue
 //and print them on the serial port
 void commOutFn();
 
 // bitcoin key setting w/ command
-volatile uint64_t newKey;
+volatile uint64_t newKey = 0;
 Mutex newKey_mutex;
 
 // motor control
@@ -233,7 +233,7 @@ void commOutFn(){
     while(1) {
         osEvent newEvent = outMessages.get();
         message_t *pMessage = (message_t*)newEvent.value.p;
-        pc.printf("Message %d with data 0x%016x\r\n",
+        pc.printf("Message %d with data 0x%016x\n\r",
         pMessage->code,pMessage->data); outMessages.free(pMessage);
     }    
 }
@@ -281,6 +281,7 @@ void decodeFn(){
                         newKey_mutex.lock();
                         //sscanf(newCmd, "K%x", &newKey);
                         sscanf(char_array, "K%x", &newKey);
+                        pc.printf("newKey: %lu\n\r", newKey);
                         newKey_mutex.unlock();
                         break;
                     default:
@@ -310,11 +311,12 @@ void bitcoinStuff() {
     uint64_t* nonce = (uint64_t*)((int)sequence + 56);
     uint8_t hash[32];
     
-    uint64_t i = *nonce;
+    uint64_t i = 0;
     while (1) {
         
         newKey_mutex.lock();
         *key = newKey;
+        //pc.printf("newKey: %lu\n\r", *key);
         newKey_mutex.unlock();
         
         *nonce = i;
@@ -338,7 +340,7 @@ int main() {
     // Starting the threads
     CommOutT.start(commOutFn);
     Decode.start(decodeFn);
-    MotorCtrlT.start(motorCtrlFn);
+    //MotorCtrlT.start(motorCtrlFn);
     
     // set PWM control
     L1L.period_us(2000);

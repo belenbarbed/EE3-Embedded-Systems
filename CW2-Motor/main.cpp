@@ -7,7 +7,7 @@
 //Threads
 Thread MotorCtrlT(osPriorityNormal, 1024);
 Thread CommOutT(osPriorityNormal, 1024);
-Thread Decode(osPriorityNormal, 1024);
+Thread Decode(osPriorityRealtime, 1024);
 
 //-------------------------------------------------------- FUNCTION DECLARATIONS
 
@@ -68,7 +68,9 @@ enum messageType
     start = 0,
     rotor_origin = 1,
     motor_speed = 2,
-    bitcoinNonce_lower = 3
+    bitcoinNonce_lower = 3,
+    motor_power = 4,
+    max_speed = 5
 };
 
 // Drive state to output table
@@ -122,8 +124,15 @@ volatile uint64_t newKey = 0;
 Mutex newKey_mutex;
 
 // motor control
-volatile uint32_t torque_tmp = 500;
+volatile int32_t motorPower = 500; // used to be uint like in spec
 volatile int32_t motorPosition;
+
+// set rotation speed w/ command
+//volatile double maxSpeed;
+//Mutex maxSpeed_mutex;
+//volatile float maxSpeed;
+volatile double maxSpeed = 0;
+Mutex maxSpeed_mutex;
 
 //------------------------------------------------------------------------- MAIN
 
@@ -147,7 +156,6 @@ int main() {
     Decode.start(decodeFn);
     MotorCtrlT.start(motorCtrlFn);
     
-    //pc.printf("Rotor origin: %x\n\r",orState);
     putMessage(rotor_origin, orState);
     //orState is subtracted from future rotor state inputs
     //to align rotor and motor states
@@ -210,7 +218,18 @@ void motorISR () {
     
     static int8_t oldRotorState;
     int8_t rotorState = readRotorState();
-    motorOut((rotorState-orState+lead+6)%6, torque_tmp);
+    int32_t motorPower_old = 0;
+    int32_t torque = 0;
+    
+    // calculate PWM value from input motorPower
+    if (motorPower_old != motorPower) {
+        torque = motorPower;
+        if(torque < 0) torque = -torque;
+        if(torque > 1000) torque = 1000;
+        //pc.printf("new torque: %d\r\n", torque);
+    }
+    motorOut((rotorState-orState+lead+6)%6, torque);
+    motorPower_old = motorPower;
     
     if (rotorState - oldRotorState == 5) {
         motorPosition--;
@@ -230,18 +249,26 @@ void motorCtrlFn() {
     motorCtrlTicker.attach_us(&motorCtrlTick, 100000);
     
     int32_t motorPos_old = motorPosition;
-    int32_t velocity;
-    int i = 0;
+    int32_t velocity = 0;
+    int32_t i = 0;
+    int32_t k_p = 25;
     
     while(1) {
         i++;
         MotorCtrlT.signal_wait(0x1);
         // TODO: add timer to count time (not=10)
-        velocity = (motorPosition - motorPos_old)*10;
         
         if (i%10 == 0) {
-            putMessage(motor_speed, velocity);
+            velocity = (motorPosition - motorPos_old)*10;
             motorPos_old = motorPosition;
+            //putMessage(motor_speed, velocity);
+            
+            maxSpeed_mutex.lock();
+            //putMessage(max_speed, maxSpeed);
+            if(velocity < 0) velocity = -velocity;
+            motorPower = k_p *(maxSpeed - velocity);
+            maxSpeed_mutex.unlock();
+            //putMessage(motor_power, motorPower);
         }
     }
 }
@@ -270,9 +297,31 @@ void commOutFn(){
     while(1) {
         osEvent newEvent = outMessages.get();
         message_t *pMessage = (message_t*)newEvent.value.p;
-        //pc.printf("Message %d with data 0x%016x\n\r",
-        pc.printf("%d: data 0x%016x\n\r",
-        pMessage->code,pMessage->data);
+        //pc.printf("%d: with data 0x%016x\n\r", pMessage->code,pMessage->data);
+        
+        switch(pMessage->code) {
+            case start:
+                pc.printf("PROGRAM START --------------------\r\n");
+                break;
+            case rotor_origin:
+                pc.printf("Rotor origin: %d\r\n", pMessage->data);
+                break;
+            case motor_speed:
+                pc.printf("Velocity: %d\r\n", pMessage->data);
+                break;
+            case bitcoinNonce_lower:
+                pc.printf("Nonce found: 0x%016x\r\n", pMessage->data);
+                break;
+            case motor_power:
+                pc.printf("MotorPower: %d\r\n", pMessage->data);
+                break;
+            case max_speed:
+                pc.printf("Max speed: 0x%016x\r\n", pMessage->data);
+                break;
+            default:
+                break;
+        }
+        
         outMessages.free(pMessage);
     }    
 }
@@ -303,10 +352,9 @@ void decodeFn(){
             
             if(newChar == '\r'){
                 // end of command reached, time to decode
-                char_array[array_pos] = '\0';                
+                char_array[array_pos] = '\0';
                 array_pos = 0;
                 
-                // TODO: Parsing 
                 // check first character
                 switch(char_array[0]) {
                     case 'R': 
@@ -314,13 +362,15 @@ void decodeFn(){
                         break;
                     case 'V': 
                         // do max speed
+                        maxSpeed_mutex.lock();
+                        sscanf(char_array, "V%lf", &maxSpeed);
+                        pc.printf("New maxSpeed: %lf\r\n", maxSpeed);
+                        maxSpeed_mutex.unlock();
                         break;
                     case 'K':
                         // set bitcoin key
                         newKey_mutex.lock();
-                        //sscanf(newCmd, "K%x", &newKey);
                         sscanf(char_array, "K%x", &newKey);
-                        //pc.printf("newKey: %lu\n\r", newKey);
                         newKey_mutex.unlock();
                         break;
                     default:

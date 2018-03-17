@@ -7,7 +7,7 @@
 //Threads
 Thread MotorCtrlT(osPriorityNormal, 1024);
 Thread CommOutT(osPriorityNormal, 1024);
-Thread Decode(osPriorityRealtime, 1024);
+Thread Decode(osPriorityNormal, 1024);
 
 //-------------------------------------------------------- FUNCTION DECLARATIONS
 
@@ -137,7 +137,7 @@ Mutex maxSpeed_mutex;
 //------------------------------------------------------------------------- MAIN
 
 int main() {
-    
+    pc.printf("hi");
     // indicate start of main code
     putMessage(start, 0);
     
@@ -256,25 +256,26 @@ void motorCtrlFn() {
     int32_t motorPos_old = motorPosition;
     int32_t velocity = 0;
     int32_t i = 0;
-    int32_t k_p = 10;
+    int32_t k_p = 100;
     
     while(1) {
         i++;
         MotorCtrlT.signal_wait(0x1);
         // TODO: add timer to count time (not=10)
         
-        if (i%10 == 0) {
-            velocity = (motorPosition - motorPos_old)*10;
+        //if (i%10 == 0) {
+            velocity = ((motorPosition - motorPos_old)*10)/6;
             motorPos_old = motorPosition;
-            putMessage(motor_speed, velocity);
-            
+            if(i%10 == 0){
+                putMessage(motor_speed, velocity);
+            }
             maxSpeed_mutex.lock();
             //putMessage(max_speed, maxSpeed);
             if(velocity < 0) velocity = -velocity;
             motorPower = k_p *(maxSpeed - velocity);
             maxSpeed_mutex.unlock();
-            putMessage(motor_power, motorPower);
-        }
+            //putMessage(motor_power, motorPower);
+        //}
     }
 }
 

@@ -128,11 +128,12 @@ volatile int32_t motorPower = 500; // used to be uint like in spec
 volatile int32_t motorPosition;
 
 // set rotation speed w/ command
-//volatile double maxSpeed;
-//Mutex maxSpeed_mutex;
-//volatile float maxSpeed;
 volatile double maxSpeed = 0;
 Mutex maxSpeed_mutex;
+
+// set position control w/ command
+volatile double noRotations = 0;
+Mutex noRotations_mutex;
 
 //------------------------------------------------------------------------- MAIN
 
@@ -257,25 +258,43 @@ void motorCtrlFn() {
     int32_t velocity = 0;
     int32_t i = 0;
     int32_t k_p = 100;
+    int32_t k_d = 30;
+    float Er;
+    float Er_old;
+    float Er_d;
+    int64_t noRotations_old;
     
     while(1) {
         i++;
         MotorCtrlT.signal_wait(0x1);
         // TODO: add timer to count time (not=10)
         
-        //if (i%10 == 0) {
-            velocity = ((motorPosition - motorPos_old)*10)/6;
-            motorPos_old = motorPosition;
-            if(i%10 == 0){
-                putMessage(motor_speed, velocity);
-            }
-            maxSpeed_mutex.lock();
-            //putMessage(max_speed, maxSpeed);
-            if(velocity < 0) velocity = -velocity;
-            motorPower = k_p *(maxSpeed - velocity);
-            maxSpeed_mutex.unlock();
-            //putMessage(motor_power, motorPower);
-        //}
+        // Position Control
+        Er_old = Er;
+        noRotations_mutex.lock();
+        if(noRotations == noRotations_old) {
+            Er -= (motorPosition - motorPos_old)/6;
+        } else {
+            Er = noRotations - ((motorPosition - motorPos_old)/6);
+        }
+        noRotations_old = noRotations;
+        noRotations_mutex.unlock();
+        motorPos_old = motorPosition;
+        Er_d = (Er_old - Er)*10;
+        motorPower = k_p * Er + k_d * Er_d;
+        
+        /* Velocity Control
+        velocity = ((motorPosition - motorPos_old)*10)/6;
+        motorPos_old = motorPosition;
+        if(i%10 == 0){
+            putMessage(motor_speed, velocity);
+        }        
+        maxSpeed_mutex.lock();
+        if(velocity < 0) velocity = -velocity;
+        motorPower = k_p *(maxSpeed - velocity);
+        if(maxSpeed == 0) motorPower = 1000;
+        maxSpeed_mutex.unlock();
+        */
     }
 }
 
@@ -365,6 +384,9 @@ void decodeFn(){
                 switch(char_array[0]) {
                     case 'R': 
                         // do rotation
+                        noRotations_mutex.lock();
+                        sscanf(char_array, "R%lf", &noRotations);
+                        noRotations_mutex.unlock();
                         break;
                     case 'V': 
                         // do max speed

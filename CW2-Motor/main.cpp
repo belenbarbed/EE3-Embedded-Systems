@@ -83,7 +83,7 @@ const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
 //const int8_t stateMap[] = {0x07,0x01,0x03,0x02,0x05,0x00,0x04,0x07}; 
 
 // Phase lead to make motor spin
-const int8_t lead = 2;  //2 for forwards, -2 for backwards
+int8_t lead = 2;  //2 for forwards, -2 for backwards
 
 // Rotor offset at motor state 0
 int8_t orState = 0;
@@ -224,7 +224,12 @@ void motorISR () {
     // calculate PWM value from input motorPower
     if (motorPower_old != motorPower) {
         torque = motorPower;
-        if(torque < 0) torque = -torque;
+        if(torque < 0) {
+            torque = -torque;
+            lead = -2;
+        } else {
+            lead = 2;
+        }
         if(torque > 1000) torque = 1000;
         //pc.printf("new torque: %d\r\n", torque);
     }
@@ -251,7 +256,7 @@ void motorCtrlFn() {
     int32_t motorPos_old = motorPosition;
     int32_t velocity = 0;
     int32_t i = 0;
-    int32_t k_p = 25;
+    int32_t k_p = 10;
     
     while(1) {
         i++;
@@ -261,14 +266,14 @@ void motorCtrlFn() {
         if (i%10 == 0) {
             velocity = (motorPosition - motorPos_old)*10;
             motorPos_old = motorPosition;
-            //putMessage(motor_speed, velocity);
+            putMessage(motor_speed, velocity);
             
             maxSpeed_mutex.lock();
             //putMessage(max_speed, maxSpeed);
             if(velocity < 0) velocity = -velocity;
             motorPower = k_p *(maxSpeed - velocity);
             maxSpeed_mutex.unlock();
-            //putMessage(motor_power, motorPower);
+            putMessage(motor_power, motorPower);
         }
     }
 }
@@ -316,7 +321,7 @@ void commOutFn(){
                 pc.printf("MotorPower: %d\r\n", pMessage->data);
                 break;
             case max_speed:
-                pc.printf("Max speed: 0x%016x\r\n", pMessage->data);
+                pc.printf("Max speed: lf\r\n", pMessage->data);
                 break;
             default:
                 break;

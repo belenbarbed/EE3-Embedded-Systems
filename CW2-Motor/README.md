@@ -2,7 +2,7 @@
 
 ### Current Questions about CW2
  
- - Instatiation 3rd thread (motor control) breaks everything
+  - SOLVED
 
 
 ### For Testing & Debugging (for Windows)

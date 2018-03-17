@@ -2,6 +2,13 @@
 #include "SHA256.h"
 #include "rtos.h"
 
+//---------------------------------------------------------------------- THREADS
+
+//Threads
+Thread MotorCtrlT(osPriorityNormal, 1024);
+Thread CommOutT(osPriorityNormal, 1024);
+Thread Decode(osPriorityNormal, 1024);
+
 //-------------------------------------------------------- FUNCTION DECLARATIONS
 
 // Motor control
@@ -58,10 +65,10 @@ State   L1  L2  L3
 //a unique code for each message type
 enum messageType
 {
-    bitcoinNonce_higher = 0,
-    bitcoinNonce_lower = 1,
-    start = 2,
-    motor_speed = 3
+    start = 0,
+    rotor_origin = 1,
+    motor_speed = 2,
+    bitcoinNonce_lower = 3
 };
 
 // Drive state to output table
@@ -102,22 +109,13 @@ DigitalOut L2H(L2Hpin);
 DigitalOut L3H(L3Hpin);
 
 //declare char_array for decode function
-char char_array[50] = {0}; 
-
-//Threads
-Thread CommOutT;
-Thread Decode;
-Thread MotorCtrlT(osPriorityNormal, 1024);
-
+char char_array[50] = {0};
 Queue<void, 8> inCharQ;
 
 //Initialise the serial port
 RawSerial pc(SERIAL_TX, SERIAL_RX);
 //Initialise the mail outmessage
 Mail<message_t,8> outMessages;
-//function prototype - take messages from the queue
-//and print them on the serial port
-void commOutFn();
 
 // bitcoin key setting w/ command
 volatile uint64_t newKey = 0;
@@ -125,7 +123,46 @@ Mutex newKey_mutex;
 
 // motor control
 volatile uint32_t torque_tmp = 500;
-int32_t motorPosition;
+volatile int32_t motorPosition;
+
+//------------------------------------------------------------------------- MAIN
+
+int main() {
+    
+    // indicate start of main code
+    putMessage(start, 0);
+    
+    // set PWM control
+    L1L.period_us(2000);
+    L2L.period_us(2000);
+    L3L.period_us(2000);
+    
+    // Run the motor synchronisation
+    orState = motorHome();
+    
+    wait(1.0);
+    
+    // Starting the threads
+    CommOutT.start(commOutFn);
+    Decode.start(decodeFn);
+    MotorCtrlT.start(motorCtrlFn);
+    
+    //pc.printf("Rotor origin: %x\n\r",orState);
+    putMessage(rotor_origin, orState);
+    //orState is subtracted from future rotor state inputs
+    //to align rotor and motor states
+    
+    //Poll the rotor state and set the motor outputs accordingly
+    //to spin the motor
+    I1.rise(&motorISR);
+    I1.fall(&motorISR);
+    I2.rise(&motorISR);
+    I2.fall(&motorISR);
+    I3.rise(&motorISR);
+    I3.fall(&motorISR);
+    
+    bitcoinStuff();
+}
 
 //---------------------------------------------------------------- MOTOR CONTROL
 
@@ -161,7 +198,7 @@ inline int8_t readRotorState(){
 int8_t motorHome() {
     //Put the motor in drive state 0 and wait for it to stabilise
     // TODO: ask if max means 2000us or 50% duty cycle (1000us)
-    motorOut(0, 1000);
+    motorOut(0, 2000);
     wait(1.0);
     
     //Get the rotor state
@@ -188,23 +225,23 @@ void motorISR () {
 // motor controlled thread fn
 void motorCtrlFn() {
     
+    // execute every 100ms (0.1s)
     Ticker motorCtrlTicker;
-    // execute every 100ms
-    motorCtrlTicker.attach_us(&motorCtrlTick,100000);
+    motorCtrlTicker.attach_us(&motorCtrlTick, 100000);
     
-    int32_t motorPos_old;
+    int32_t motorPos_old = motorPosition;
     int32_t velocity;
     int i = 0;
     
     while(1) {
         i++;
-        motorPos_old = motorPosition;
         MotorCtrlT.signal_wait(0x1);
         // TODO: add timer to count time (not=10)
         velocity = (motorPosition - motorPos_old)*10;
         
         if (i%10 == 0) {
             putMessage(motor_speed, velocity);
+            motorPos_old = motorPosition;
         }
     }
 }
@@ -233,8 +270,10 @@ void commOutFn(){
     while(1) {
         osEvent newEvent = outMessages.get();
         message_t *pMessage = (message_t*)newEvent.value.p;
-        pc.printf("Message %d with data 0x%016x\n\r",
-        pMessage->code,pMessage->data); outMessages.free(pMessage);
+        //pc.printf("Message %d with data 0x%016x\n\r",
+        pc.printf("%d: data 0x%016x\n\r",
+        pMessage->code,pMessage->data);
+        outMessages.free(pMessage);
     }    
 }
 
@@ -281,7 +320,7 @@ void decodeFn(){
                         newKey_mutex.lock();
                         //sscanf(newCmd, "K%x", &newKey);
                         sscanf(char_array, "K%x", &newKey);
-                        pc.printf("newKey: %lu\n\r", newKey);
+                        //pc.printf("newKey: %lu\n\r", newKey);
                         newKey_mutex.unlock();
                         break;
                     default:
@@ -315,8 +354,11 @@ void bitcoinStuff() {
     while (1) {
         
         newKey_mutex.lock();
-        *key = newKey;
-        //pc.printf("newKey: %lu\n\r", *key);
+        if (newKey != *key) {
+            *key = newKey;
+            //pc.printf("newKey: %lu\n\r", *key);
+            i = 0;
+        }
         newKey_mutex.unlock();
         
         *nonce = i;
@@ -324,48 +366,9 @@ void bitcoinStuff() {
         if ((hash[0] || hash[1]) == 0) {
             // Send message reporting good nonce
             uint32_t nonce_lower  = (uint32_t) *nonce;
-            uint32_t nonce_higher = (uint32_t) ((*nonce) >> 32);
             putMessage(bitcoinNonce_lower, nonce_lower);
-            putMessage(bitcoinNonce_higher, nonce_higher);
             //pc.printf("nonce found: %ul\n\r", *nonce);
         }
         i++;
     }  
-}
-
-//------------------------------------------------------------------------- MAIN
-
-int main() {
-    
-    // Starting the threads
-    CommOutT.start(commOutFn);
-    Decode.start(decodeFn);
-    //MotorCtrlT.start(motorCtrlFn);
-    
-    // set PWM control
-    L1L.period_us(2000);
-    L2L.period_us(2000);
-    L3L.period_us(2000);
-    
-    // indicate start of main code
-    putMessage(start, 0);
-    
-    // Run the motor synchronisation
-    orState = motorHome();
-    pc.printf("Rotor origin: %x\n\r",orState);
-    //orState is subtracted from future rotor state inputs
-    //to align rotor and motor states
-    
-    //Poll the rotor state and set the motor outputs accordingly
-    //to spin the motor
-    I1.rise(&motorISR);
-    I1.fall(&motorISR);
-    I2.rise(&motorISR);
-    I2.fall(&motorISR);
-    I3.rise(&motorISR);
-    I3.fall(&motorISR);
-    
-    bitcoinStuff();
-
-    // TODO: Need to test (instruction 6)
 }

@@ -266,11 +266,12 @@ void motorCtrlFn() {
     int32_t motorPos_old = motorPosition;
     int32_t motorPower_v;
     
-    int32_t k_p_p = 25;
-    int32_t k_d_p = 17;
+    int32_t k_p_p = 30;
+    int32_t k_d_p = 20;
     float Er;
     float Er_old = 0;
     float Er_d;
+    float Er_d_old;
     int32_t motorPower_p;
     
     int8_t sgn_Er;
@@ -284,12 +285,14 @@ void motorCtrlFn() {
         // Position Control
         noRotations_mutex.lock();
         Er = noRotations - (motorPosition - motorPos_start);
+        if(noRotations == 0) Er = 1000;
         noRotations_mutex.unlock();
+        Er_d_old = Er_d;
         Er_d = (Er - Er_old)*10;
+        Er_d = Er_d * 0.9 + Er_d_old * 0.1;
         (Er < 0) ? sgn_Er = -1 : sgn_Er = 1;
         Er_old = Er;
         motorPower_p = k_p_p * Er + k_d_p * Er_d;
-        // TODO: R0 case
         if(i%10 == 0){
             putMessage(no_rots, (motorPosition - motorPos_start)/6);
         } 

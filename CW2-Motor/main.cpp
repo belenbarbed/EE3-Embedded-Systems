@@ -1,6 +1,8 @@
+
 #include "mbed.h"
 #include "SHA256.h"
 #include "rtos.h"
+
 
 //Initialise the serial port
 RawSerial pc(SERIAL_TX, SERIAL_RX);
@@ -71,9 +73,10 @@ enum messageType
     start = 0,
     rotor_origin = 1,
     motor_speed = 2,
-    bitcoinNonce_lower = 3,
-    motor_power = 4,
-    max_speed = 5
+    no_rots = 3,
+    bitcoinNonce_lower = 4,
+    motor_power = 5,
+    max_speed = 6
 };
 
 // Drive state to output table
@@ -135,11 +138,12 @@ Mutex maxSpeed_mutex;
 // set position control w/ command
 volatile double noRotations = 0;
 Mutex noRotations_mutex;
+volatile int32_t motorPos_start;
 
 //------------------------------------------------------------------------- MAIN
 
 int main() {
-    pc.printf("hi");
+    pc.printf("hi, Ed\r\n");
     // indicate start of main code
     putMessage(start, 0);
     
@@ -255,39 +259,36 @@ void motorCtrlFn() {
     Ticker motorCtrlTicker;
     motorCtrlTicker.attach_us(&motorCtrlTick, 100000);
     
-    int32_t motorPos_old = motorPosition;
-    int32_t velocity = 0;
     int32_t i = 0;
+    
+    int32_t velocity = 0;
     int32_t k_p_v = 100;
-    int32_t k_p_p = 20;
-    int32_t k_d_p = 50;
     int32_t diff;
+    
+    int32_t k_p_p = 25;
+    int32_t k_d_p = 17;
     float Er;
-    float Er_old;
+    float Er_old = 0;
     float Er_d;
-    int64_t noRotations_old;
     
     while(1) {
         i++;
         MotorCtrlT.signal_wait(0x1);
         // TODO: add timer to count time (not=10)
         
-        /* Position Control
-        Er_old = Er;
+        // Position Control
         noRotations_mutex.lock();
-        if(noRotations == noRotations_old) {
-            Er -= (motorPosition - motorPos_old)/6;
-        } else {
-            Er = noRotations - ((motorPosition - motorPos_old)/6);
-        }
-        noRotations_old = noRotations;
+        Er = noRotations - (motorPosition - motorPos_start);
         noRotations_mutex.unlock();
-        motorPos_old = motorPosition;
-        Er_d = (Er_old - Er)*10;
+        Er_d = (Er - Er_old)*10;
+        Er_old = Er;
         motorPower = k_p_p * Er + k_d_p * Er_d;
-        */
+        if(i%10 == 0){
+            putMessage(no_rots, (motorPosition - motorPos_start)/6);
+        } 
+        //
         
-        // Velocity Control
+        /* Velocity Control
         velocity = ((motorPosition - motorPos_old)*10)/6;
         motorPos_old = motorPosition;
         if(i%10 == 0){
@@ -299,7 +300,7 @@ void motorCtrlFn() {
         motorPower = k_p_v *(diff - velocity);
         if(maxSpeed == 0) motorPower = 1000;
         maxSpeed_mutex.unlock();
-        //
+        */
     }
 }
 
@@ -338,6 +339,9 @@ void commOutFn(){
                 break;
             case motor_speed:
                 pc.printf("Velocity: %d\r\n", pMessage->data);
+                break;
+            case no_rots:
+                pc.printf("Rots since command: %d\r\n", pMessage->data);
                 break;
             case bitcoinNonce_lower:
                 pc.printf("Nonce found: 0x%016x\r\n", pMessage->data);
@@ -391,7 +395,10 @@ void decodeFn(){
                         // do rotation
                         noRotations_mutex.lock();
                         sscanf(char_array, "R%lf", &noRotations);
+                        pc.printf("No of rotations: %lf\r\n", noRotations);
+                        noRotations = noRotations * 6;
                         noRotations_mutex.unlock();
+                        motorPos_start = motorPosition;
                         break;
                     case 'V': 
                         // do max speed

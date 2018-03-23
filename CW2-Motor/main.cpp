@@ -2,6 +2,9 @@
 #include "SHA256.h"
 #include "rtos.h"
 
+//Initialise the serial port
+RawSerial pc(SERIAL_TX, SERIAL_RX);
+
 //---------------------------------------------------------------------- THREADS
 
 //Threads
@@ -28,7 +31,7 @@ void serialISR();
 void decodeFn();
 
 // Bitcoin mining
-void bitcoinStuff();
+void BitcoinFn();
 
 //----------------------------------------------- GLOBAL VARIABLE INITIALISATION
 
@@ -114,8 +117,6 @@ DigitalOut L3H(L3Hpin);
 char char_array[50] = {0};
 Queue<void, 8> inCharQ;
 
-//Initialise the serial port
-RawSerial pc(SERIAL_TX, SERIAL_RX);
 //Initialise the mail outmessage
 Mail<message_t,8> outMessages;
 
@@ -170,7 +171,7 @@ int main() {
     I3.rise(&motorISR);
     I3.fall(&motorISR);
     
-    bitcoinStuff();
+    BitcoinFn();
 }
 
 //---------------------------------------------------------------- MOTOR CONTROL
@@ -257,8 +258,10 @@ void motorCtrlFn() {
     int32_t motorPos_old = motorPosition;
     int32_t velocity = 0;
     int32_t i = 0;
-    int32_t k_p = 100;
-    int32_t k_d = 30;
+    int32_t k_p_v = 100;
+    int32_t k_p_p = 20;
+    int32_t k_d_p = 50;
+    int32_t diff;
     float Er;
     float Er_old;
     float Er_d;
@@ -269,7 +272,7 @@ void motorCtrlFn() {
         MotorCtrlT.signal_wait(0x1);
         // TODO: add timer to count time (not=10)
         
-        // Position Control
+        /* Position Control
         Er_old = Er;
         noRotations_mutex.lock();
         if(noRotations == noRotations_old) {
@@ -281,9 +284,10 @@ void motorCtrlFn() {
         noRotations_mutex.unlock();
         motorPos_old = motorPosition;
         Er_d = (Er_old - Er)*10;
-        motorPower = k_p * Er + k_d * Er_d;
+        motorPower = k_p_p * Er + k_d_p * Er_d;
+        */
         
-        /* Velocity Control
+        // Velocity Control
         velocity = ((motorPosition - motorPos_old)*10)/6;
         motorPos_old = motorPosition;
         if(i%10 == 0){
@@ -291,10 +295,11 @@ void motorCtrlFn() {
         }        
         maxSpeed_mutex.lock();
         if(velocity < 0) velocity = -velocity;
-        motorPower = k_p *(maxSpeed - velocity);
+        diff = (1.0502)*maxSpeed + 0.62;
+        motorPower = k_p_v *(diff - velocity);
         if(maxSpeed == 0) motorPower = 1000;
         maxSpeed_mutex.unlock();
-        */
+        //
     }
 }
 
@@ -412,7 +417,7 @@ void decodeFn(){
 
 //--------------------------------------------------------------- BITCOIN MINING
 
-void bitcoinStuff() {
+void BitcoinFn() {
     
     // Bitcoin stuff
     SHA256 sha;

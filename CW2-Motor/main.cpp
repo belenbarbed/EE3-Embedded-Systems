@@ -1,4 +1,3 @@
-
 #include "mbed.h"
 #include "SHA256.h"
 #include "rtos.h"
@@ -264,12 +263,18 @@ void motorCtrlFn() {
     int32_t velocity = 0;
     int32_t k_p_v = 100;
     int32_t diff;
+    int32_t motorPos_old = motorPosition;
+    int32_t motorPower_v;
     
     int32_t k_p_p = 25;
     int32_t k_d_p = 17;
     float Er;
     float Er_old = 0;
     float Er_d;
+    int32_t motorPower_p;
+    
+    int8_t sgn_Er;
+    bool sgn_vel;
     
     while(1) {
         i++;
@@ -281,26 +286,41 @@ void motorCtrlFn() {
         Er = noRotations - (motorPosition - motorPos_start);
         noRotations_mutex.unlock();
         Er_d = (Er - Er_old)*10;
+        (Er < 0) ? sgn_Er = -1 : sgn_Er = 1;
         Er_old = Er;
-        motorPower = k_p_p * Er + k_d_p * Er_d;
+        motorPower_p = k_p_p * Er + k_d_p * Er_d;
+        // TODO: R0 case
         if(i%10 == 0){
             putMessage(no_rots, (motorPosition - motorPos_start)/6);
         } 
         //
         
-        /* Velocity Control
+        // Velocity Control
         velocity = ((motorPosition - motorPos_old)*10)/6;
         motorPos_old = motorPosition;
         if(i%10 == 0){
             putMessage(motor_speed, velocity);
         }        
         maxSpeed_mutex.lock();
-        if(velocity < 0) velocity = -velocity;
+        if(velocity < 0) {
+            velocity = -velocity;
+            sgn_vel = 0;
+        } else {
+            sgn_vel = 1;
+        }
         diff = (1.0502)*maxSpeed + 0.62;
-        motorPower = k_p_v *(diff - velocity);
-        if(maxSpeed == 0) motorPower = 1000;
+        motorPower_v = k_p_v * (diff - velocity) * sgn_Er;
+        if(maxSpeed == 0) motorPower_v = 1000;
         maxSpeed_mutex.unlock();
-        */
+        //
+        
+        // Choose between Velocity and Position Control
+        if(sgn_vel) {
+            (motorPower_v < motorPower_p) ? motorPower = motorPower_v : motorPower = motorPower_p;
+        } else {
+            (motorPower_v > motorPower_p) ? motorPower = motorPower_v : motorPower = motorPower_p;
+        }
+        //
     }
 }
 

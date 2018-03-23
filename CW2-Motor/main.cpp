@@ -75,7 +75,8 @@ enum messageType
     no_rots = 3,
     bitcoinNonce_lower = 4,
     motor_power = 5,
-    max_speed = 6
+    max_speed = 6,
+    nonces_tried = 7
 };
 
 // Drive state to output table
@@ -117,6 +118,9 @@ PwmOut L3L(L3Lpin);
 DigitalOut L1H(L1Hpin);
 DigitalOut L2H(L2Hpin);
 DigitalOut L3H(L3Hpin);
+
+// every how many nonces tried to report
+int32_t report_nonces = 20000;
 
 //declare char_array for decode function
 char char_array[50] = {0};
@@ -387,7 +391,10 @@ void commOutFn(){
                 pc.printf("MotorPower: %d\r\n", pMessage->data);
                 break;
             case max_speed:
-                pc.printf("Max speed: lf\r\n", pMessage->data);
+                pc.printf("Max speed: %lf\r\n", pMessage->data);
+                break;
+            case nonces_tried:
+                pc.printf("Nonces tried: %d\r\n", pMessage->data);
                 break;
             default:
                 break;
@@ -492,5 +499,7 @@ void BitcoinFn() {
             putMessage(bitcoinNonce_lower, nonce_lower);
         }
         (*nonce)++;
+        // we have traversed through "report_nonces" hashes
+        if((*nonce)%report_nonces == 0) putMessage(nonces_tried, *nonce);
     }
 }
